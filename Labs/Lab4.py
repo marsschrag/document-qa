@@ -40,7 +40,7 @@ def add_to_collection(collection, text, file_name):
     #add embedding and doc to chromadb
     collection.add(
         documents=[text],
-        ids=file_name,
+        ids=[file_name],
         embeddings=[embedding],
         metadatas=[{"filename": file_name}]
     )
