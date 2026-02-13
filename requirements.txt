@@ -3,4 +3,3 @@ openai
 chromadb
 pysqlite3-binary
 PyPDF2
-protoouf==3.20
