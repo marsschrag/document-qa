@@ -41,7 +41,8 @@ def add_to_collection(collection, text, file_name):
     collection.add(
         documents=[text],
         ids=file_name,
-        embeddings=[embedding]
+        embeddings=[embedding],
+        metadatas=[{"filename": file_name}]
     )
 
 def extract_text_from_pdf(pdf_path):
@@ -126,59 +127,127 @@ st.title("Lab4: Chatbot Using RAG")
 
 
 #for testing
-topic = st.sidebar.text_input('Topic', placeholder='type your topic here')
-if topic:
-    client = st.session_state.openai_client
-    response = client.embeddings.create(
-        input=topic,
-        model='text-embedding-3-small')
-    query_embedding = response.data[0].embedding
-    results = collection.query(
-        query_embeddings=[query_embedding],
-        n_results=3
-    )
-    st.subheader(f"results for {topic}")
-    for i in range(len(results['documents'][0])):
-        doc = results['documents'][0][1]
-        doc_id = results['ids'][0][1]
-        st.write(f"**{1+1}. {doc_id}")
-else:
-    st.info("enter a topic in the sidebar to search the collection.")
+#topic = st.sidebar.text_input('Topic', placeholder='type your topic here')
+#if topic:
+    #client = st.session_state.openai_client
+    #response = client.embeddings.create(
+        #input=topic,
+        #model='text-embedding-3-small')
+    #query_embedding = response.data[0].embedding
+    #results = collection.query(
+        #query_embeddings=[query_embedding],
+        #n_results=3
+    #)
+    #st.subheader(f"results for {topic}")
+    #for i in range(len(results['documents'][0])):
+        #doc = results['documents'][0][1]
+        #doc_id = results['ids'][0][1]
+        #st.write(f"**{1+1}. {doc_id}")
+#else:
+    #st.info("enter a topic in the sidebar to search the collection.")
 #end testing
     
 
 
-if "messages" not in st.session_state:
-    st.session_state["messages"] = [
-        {
-            "role": "system", 
-            "content": "explain things in a way a 10-year-old would understand. after answering each question, ask 'do you want more info?' and if the user says yes, provide more information and ask again. if the user says no, ask 'how else can I help you?'"
-        },
-        {
-            "role": "assistant", 
-            "content": "How can I help you?"
-        }
-    ]
+def create_rag_prompt(user_question, retrieved_docs):
+    context = ""
+    for idx, (doc_text, doc_id) in enumerate(zip(retrieved_docs['documents'][0], retrieved_docs['ids'][0])):
+        context += f"\n--- Document {idx+1}: {doc_id} ---\n"
+        context += doc_text[:2000]  #limit each doc to 2000 chars to manage token limits
+        context += "\n"
+    
+    #create the RAG prompt
+    prompt = f"""You are a helpful course information assistant. You have access to course materials and documents.
+Based on the following course documents, please answer the user's question. If the answer is found in the documents, cite which document(s) you're referencing. If the information is not in the provided documents, clearly state that you don't have that information in the course materials.
+COURSE DOCUMENTS:
+{context}
 
-for msg in st.session_state.messages:
-    chat_msg = st.chat_message(msg["role"])
-    chat_msg.write(msg["content"])
+USER QUESTION: {user_question}
 
-if prompt := st.chat_input("what is up?"):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
+Please provide a clear and helpful answer. If you're using information from the course documents, explicitly mention which document(s) you're referencing. If the information isn't in the provided documents, say so clearly."""
 
-    #last 2 user messages plus assistant's messages
-    if len(st.session_state.messages) > 5:
-        st.session_state.messages = [st.session_state.messages[0]] + st.session_state.messages[-4:]
+    return prompt
 
-
-    client = st.session_state.client
-    stream = client.chat.completions.create(
+def chat_with_rag(user_message, collection):
+    """Process user message with RAG (Retrieval Augmented Generation)"""
+    
+    #search vector database for relevant documents
+    retrieved_docs = search_vectordb(collection, user_message, top_k=3)
+    
+    #create RAG prompt with retrieved context
+    rag_prompt = create_rag_prompt(user_message, retrieved_docs)
+    
+    #send to LLM
+    client = st.session_state.openai_client
+    response = client.chat.completions.create(
         model=model_to_use,
-        messages = st.session_state.messages,
-        stream=True)
-    with st.chat_message("assistant"):
-        response = st.write_stream(stream)
-    st.session_state.messages.append({"role": "assistant", "content": response})
+        messages=[
+            {"role": "system", "content": "You are a helpful course information assistant. Always be clear about whether you're using information from the provided course documents or your general knowledge."},
+            {"role": "user", "content": rag_prompt}
+        ],
+        temperature=0.7,
+        max_tokens=1000
+    )
+    
+    return response.choices[0].message.content, retrieved_docs
+
+#initialize chat history
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
+
+#show database status
+if 'Lab4_VectorDB' in st.session_state:
+    collection = st.session_state.Lab4_VectorDB
+    
+    #show document list
+    with st.sidebar.expander("view loaded documents"):
+        all_docs = collection.get()
+        if all_docs['ids']:
+            for doc_id in all_docs['ids']:
+                st.write(f"• {doc_id}")
+    
+    #chat interface
+    st.header("chat")
+    
+    #display chat history
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+            
+            #show sources if available
+            if message["role"] == "assistant" and "sources" in message:
+                with st.expander("📄 View sources"):
+                    for source in message["sources"]:
+                        st.write(f"• {source}")
+    
+    #chat input
+    if prompt := st.chat_input("Ask about the course..."):
+        #add user message to chat history
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        
+        #display user message
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        
+        #get bot response
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                response, retrieved_docs = chat_with_rag(prompt, collection)
+                st.markdown(response)
+                
+                #show which documents were referenced
+                sources = retrieved_docs['ids'][0]
+                with st.expander("📄 View sources used"):
+                    st.write("Documents referenced:")
+                    for source in sources:
+                        st.write(f"• {source}")
+        
+        #add assistant response to chat history
+        st.session_state.messages.append({
+            "role": "assistant", 
+            "content": response,
+            "sources": sources
+        })
+        
+else:
+    st.info("Please upload and load PDF files from the sidebar to start chatting!")
