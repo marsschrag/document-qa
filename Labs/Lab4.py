@@ -186,7 +186,7 @@ def chat_with_rag(user_message, collection):
             {"role": "user", "content": rag_prompt}
         ],
         temperature=0.7,
-        max_tokens=1000
+        max_completion_tokens=1000
     )
     
     return response.choices[0].message.content, retrieved_docs
