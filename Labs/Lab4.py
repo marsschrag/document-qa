@@ -185,7 +185,6 @@ def chat_with_rag(user_message, collection):
             {"role": "system", "content": "You are a helpful course information assistant. Always be clear about whether you're using information from the provided course documents or your general knowledge."},
             {"role": "user", "content": rag_prompt}
         ],
-        temperature=0.7,
         max_completion_tokens=1000
     )
     
