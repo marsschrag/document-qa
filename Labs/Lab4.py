@@ -194,60 +194,63 @@ def chat_with_rag(user_message, collection):
 #initialize chat history
 if 'messages' not in st.session_state:
     st.session_state.messages = []
+  
+#initialize vector database (only once)
+if 'Lab4_VectorDB' not in st.session_state:
+    st.session_state.Lab4_VectorDB = create_vectordb()
 
-#show database status
-if 'Lab4_VectorDB' in st.session_state:
-    collection = st.session_state.Lab4_VectorDB
+collection = st.session_state.Lab4_VectorDB
+
+#sidebar info
+st.sidebar.header("Knowledge Base Status")
+st.sidebar.success(f"{collection.count()} documents loaded")
+
+#show document list
+with st.sidebar.expander("View loaded documents"):
+    all_docs = collection.get()
+    if all_docs['ids']:
+        for doc_id in all_docs['ids']:
+            st.write(f"• {doc_id}")
+
+#chat interface
+st.header("Chat")
+
+#display chat history
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+        
+        #show sources if available
+        if message["role"] == "assistant" and "sources" in message:
+            with st.expander("view sources"):
+                for source in message["sources"]:
+                    st.write(f"• {source}")
+
+#chat input
+if prompt := st.chat_input("Ask about the course..."):
+    #add user message to chat history
+    st.session_state.messages.append({"role": "user", "content": prompt})
     
-    #show document list
-    with st.sidebar.expander("view loaded documents"):
-        all_docs = collection.get()
-        if all_docs['ids']:
-            for doc_id in all_docs['ids']:
-                st.write(f"• {doc_id}")
+    #display user message
+    with st.chat_message("user"):
+        st.markdown(prompt)
     
-    #chat interface
-    st.header("chat")
-    
-    #display chat history
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+    #get bot response
+    with st.chat_message("assistant"):
+        with st.spinner("Thinking..."):
+            response, retrieved_docs = chat_with_rag(prompt, collection)
+            st.markdown(response)
             
-            #show sources if available
-            if message["role"] == "assistant" and "sources" in message:
-                with st.expander("📄 View sources"):
-                    for source in message["sources"]:
-                        st.write(f"• {source}")
+            #show which documents were referenced
+            sources = retrieved_docs['ids'][0]
+            with st.expander("View sources used"):
+                st.write("Documents referenced:")
+                for source in sources:
+                    st.write(f"• {source}")
     
-    #chat input
-    if prompt := st.chat_input("Ask about the course..."):
-        #add user message to chat history
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        
-        #display user message
-        with st.chat_message("user"):
-            st.markdown(prompt)
-        
-        #get bot response
-        with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
-                response, retrieved_docs = chat_with_rag(prompt, collection)
-                st.markdown(response)
-                
-                #show which documents were referenced
-                sources = retrieved_docs['ids'][0]
-                with st.expander("📄 View sources used"):
-                    st.write("Documents referenced:")
-                    for source in sources:
-                        st.write(f"• {source}")
-        
-        #add assistant response to chat history
-        st.session_state.messages.append({
-            "role": "assistant", 
-            "content": response,
-            "sources": sources
-        })
-        
-else:
-    st.info("Please upload and load PDF files from the sidebar to start chatting!")
+    #add assistant response to chat history
+    st.session_state.messages.append({
+        "role": "assistant", 
+        "content": response,
+        "sources": sources
+    })
