@@ -49,7 +49,7 @@ tools = [
                     },
                     "format": {
                         "type": "string",
-                        "enum": ["celsius", "fahrenheit"],
+                        "enum": ["metric", "imperial"],
                         "description": "Temperature units. Determine from the forecast location.",
                     },
                 },
@@ -59,7 +59,10 @@ tools = [
     }
 ]
 
-def get_advice(city_input: str, units: str = "fahrenheit") -> tuple[str, dict | None]:
+client = OpenAI(api_key=openai_api_key)
+
+#get advice function
+def get_advice(city_input: str, units: str = "imperial") -> tuple[str, dict | None]:
     user_msg = (
         f"What is the weather like in {city_input}? "
         "Based on that, what clothes should I wear today and what outdoor "
@@ -84,7 +87,7 @@ def get_advice(city_input: str, units: str = "fahrenheit") -> tuple[str, dict | 
     response = client.chat.completions.create(
         model="gpt-5-nano",
         messages=messages,
-        tools=TOOLS,
+        tools=tools,
         tool_choice="auto",
     )
 
@@ -96,7 +99,7 @@ def get_advice(city_input: str, units: str = "fahrenheit") -> tuple[str, dict | 
         args = json.loads(tool_call.function.arguments)
 
         location = args.get("location") or "Syracuse, NY"
-        units_arg = args.get("units", units)
+        units_arg = args.get("format", units)
 
         try:
             weather_data = get_current_weather(location, units_arg)
@@ -137,13 +140,15 @@ def get_advice(city_input: str, units: str = "fahrenheit") -> tuple[str, dict | 
 
     return advice, weather_data
 
+#app design
+
 st.title("Weather Advice Bot")
 
 st.caption("Enter a city and get personalized clothing & activity suggestions")
 
 city  = st.text_input("City", placeholder="e.g. Chicago, IL  (leave blank for Syracuse, NY)")
-units = st.radio("Units", ["celsius, fahrenheit"],
-                 format_func=lambda u: "celsius (°C)" if u == "celsius" else "fahrenheit (°F)",
+units = st.radio("Units", ["imperial", "metric"],
+                 format_func=lambda u: "Imperial (°F)" if u == "imperial" else "Metric (°C)",
                  horizontal=True)
 
 if st.button("Get Advice"):
