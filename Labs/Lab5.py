@@ -8,7 +8,7 @@ ow_api_key = st.secrets["openweather_api_key"]
 openai_api_key = st.secrets["OPENAI_API_KEY"]
 
 #current weather function
-def get_current_weather(location, ow_api_key, units='imperial'):
+def get_current_weather(location, ow_api_key, units='fahrenheit'):
     url = (
         f'https://api.openweathermap.org/data/2.5/weather'
         f'?q={location}&appid={ow_api_key}&units={units}'
